@@ -36,6 +36,18 @@ AACT (PostgreSQL) → Extract → Transform → Neo4j (Graph DB)
     dosage_form]
 ```
 
+## 📊 Data Query Choice & Rationale
+
+**Query Parameters:**
+- **Intervention Types**: `DRUG`, `BIOLOGICAL` — Focus on pharmaceutical interventions
+- **Phases**: Phase 1 through Phase 4 — Capture all clinical development stages
+- **Limit**: 1,000 studies — Non-trivial dataset demonstrating scalability
+
+**Rationale:**
+- Drug/Biological trials contain the most relevant intervention data for knowledge graphs
+- Phase filtering ensures we capture trials with structured clinical data
+- 1,000 studies provides sufficient variety while keeping demo manageable
+
 ## 📊 Data Coverage
 
 From 1,000 clinical trials (Drug/Biological, Phase 1-4):
@@ -43,14 +55,17 @@ From 1,000 clinical trials (Drug/Biological, Phase 1-4):
 | Entity | Count | Notes |
 |--------|-------|-------|
 | Trials | 1,000 | Core study data |
-| Organizations | 169 | Deduplicated sponsors |
-| Drugs | 1,851 | Includes biologicals |
-| Conditions | 1,918 | Disease targets |
-| Trial-Org Relations | 1,474 | Sponsors + collaborators |
+| Organizations | 169 | Deduplicated from 1,498 raw |
+| Drugs | 687 | Unique drug entities |
+| Conditions | 466 | Unique conditions |
+| SPONSORED_BY | ~850 | Lead sponsor relations |
+| COLLABORATES_WITH | ~600 | Collaborator relations |
+| INVESTIGATES | 1,851 | Drug-trial connections |
+| TARGETS | 1,918 | Condition-trial connections |
 
 **Route/Dosage Extraction:**
-- Route coverage: ~7% (extracted via regex)
-- Dosage form coverage: ~2.3%
+- Route coverage: ~7% (130 drug-trial relations with route)
+- Dosage form coverage: ~2.3% (43 relations with dosage form)
 
 ## 🚀 Quick Start
 
@@ -179,28 +194,67 @@ Extracts from AACT PostgreSQL:
 - Constraint and index creation
 - Route/dosage form stored as relationship properties
 
-## 🔍 Sample Queries
+## 🔍 Required Queries & Sample Outputs
 
-After loading, explore with Cypher in Neo4j Browser:
+### Query 1: For a given company, list associated trials
 
 ```cypher
--- Top sponsors
+MATCH (t:Trial)-[:SPONSORED_BY|COLLABORATES_WITH]->(o:Organization)
+WHERE o.name CONTAINS 'National Cancer Institute'
+RETURN t.nct_id, t.brief_title, t.phase, t.overall_status
+LIMIT 10;
+```
+
+**Sample Output:**
+```
+╒═══════════════╤════════════════════════════════════════╤═════════╤══════════════╕
+│nct_id         │brief_title                             │phase    │overall_status│
+╞═══════════════╪════════════════════════════════════════╪═════════╪══════════════╡
+│"NCT00000625"  │"A Phase I Study of Azidothymidine..."  │"PHASE1" │"COMPLETED"   │
+│"NCT00000628"  │"A Randomized Trial Comparing..."       │"PHASE3" │"COMPLETED"   │
+│"NCT00000631"  │"An Open Study of Foscarnet..."         │"PHASE1" │"COMPLETED"   │
+└───────────────┴────────────────────────────────────────┴─────────┴──────────────┘
+```
+
+### Query 2: Top companies by number of trials
+
+```cypher
 MATCH (t:Trial)-[:SPONSORED_BY]->(o:Organization)
-RETURN o.name AS Sponsor, count(t) AS Trials
+RETURN o.name AS Organization, count(t) AS Trials
 ORDER BY Trials DESC LIMIT 10;
+```
 
--- Drugs with known routes
-MATCH (t:Trial)-[r:INVESTIGATES]->(d:Drug)
-WHERE r.route IS NOT NULL
-RETURN d.name, r.route, count(t) AS Trials
-ORDER BY Trials DESC LIMIT 20;
+**Sample Output:**
+```
+╒══════════════════════════════════════════════════════╤════════╕
+│Organization                                          │Trials  │
+╞══════════════════════════════════════════════════════╪════════╡
+│"National Institute of Allergy and Infectious..."     │400     │
+│"National Cancer Institute"                           │97      │
+│"National Heart, Lung, and Blood Institute"           │96      │
+│"National Institute on Drug Abuse"                    │82      │
+│"Yale University"                                     │21      │
+└──────────────────────────────────────────────────────┴────────┘
+```
 
--- Drug repurposing candidates (tested for multiple conditions)
-MATCH (d:Drug)<-[:INVESTIGATES]-(t:Trial)-[:TARGETS]->(c:Condition)
-WITH d, collect(DISTINCT c.name) AS Conditions
-WHERE size(Conditions) >= 3
-RETURN d.name, Conditions
-ORDER BY size(Conditions) DESC;
+### Query 3: Route and dosage form coverage
+
+```cypher
+MATCH (t:Trial)-[inv:INVESTIGATES]->(d:Drug)
+WITH count(*) AS Total,
+     sum(CASE WHEN inv.route IS NOT NULL THEN 1 ELSE 0 END) AS WithRoute,
+     sum(CASE WHEN inv.dosage_form IS NOT NULL THEN 1 ELSE 0 END) AS WithDosageForm
+RETURN Total, WithRoute, round(100.0*WithRoute/Total, 1) AS RoutePercent,
+       WithDosageForm, round(100.0*WithDosageForm/Total, 1) AS DosageFormPercent;
+```
+
+**Sample Output:**
+```
+╒═══════╤══════════╤══════════════╤════════════════╤══════════════════╕
+│Total  │WithRoute │RoutePercent  │WithDosageForm  │DosageFormPercent │
+╞═══════╪══════════╪══════════════╪════════════════╪══════════════════╡
+│1851   │130       │7.0           │43              │2.3               │
+└───────┴──────────┴──────────────┴────────────────┴──────────────────┘
 ```
 
 See `queries/demo_queries.cypher` for 50+ demonstration queries.
@@ -244,14 +298,35 @@ docker-compose logs -f
 docker-compose down
 ```
 
-## ⚡ Design Decisions
+## ⚡ Design Decisions & Assumptions
 
-### Why Route as Edge Property?
+### Route/Dosage Form Extraction
 
-Route of administration is not a direct AACT field. Instead of creating sparse `Route` nodes, we:
-1. Extract via regex patterns (~7% coverage)
-2. Store as property on `INVESTIGATES` relationship
-3. Allow NULL for unknown routes
+**Challenge**: Route of administration and dosage form are NOT direct fields in AACT.
+
+**Approach**: Regex-based extraction from:
+- `intervention_name` field
+- `intervention_description` field  
+- `design_group_description` field
+
+**Limitations**:
+- ~7% route coverage (130/1851 drug-trial relations)
+- ~2.3% dosage form coverage (43/1851 relations)
+- Misses routes mentioned in free-text clinical descriptions
+- No disambiguation of ambiguous terms
+
+**Alternative considered**: Creating dedicated `Route` and `DosageForm` nodes. Rejected due to sparse data—would create mostly disconnected nodes. Edge properties better represent the trial-specific nature of administration.
+
+### Organization Normalization
+
+**Challenge**: Same organization appears with different names (e.g., "Pfizer Inc.", "Pfizer, Inc", "Pfizer").
+
+**Approach**:
+1. Remove common suffixes: Inc., Ltd., Corp., LLC, GmbH, etc.
+2. Normalize whitespace and case
+3. Generate `org_key` for deduplication
+
+**Result**: 1,498 raw records → 169 unique organizations
 
 ### Idempotency
 
@@ -260,20 +335,22 @@ All loads use `MERGE` statements:
 - Incremental updates preserve existing data
 - `updated_at` timestamp tracks freshness
 
-### Normalization Strategy
+## 📈 Next Steps (With More Time)
 
-Organizations are heavily deduplicated (1,498 → 169) to enable:
-- Proper organization network analysis
-- Accurate sponsorship counts
-- Cross-trial collaboration discovery
+### Short-term Improvements
+1. **Better Route Extraction**: Use NLP/spaCy with clinical NER models
+2. **MeSH Term Integration**: Add `browse_interventions` as drug classification hierarchy
+3. **Facility Nodes**: Model trial sites for geographic analysis
 
-## 📈 Future Enhancements
+### Medium-term Enhancements
+4. **Incremental Ingestion**: Track last extraction date, only fetch new/updated trials
+5. **Outcome Parsing**: Extract primary/secondary endpoints from `design_outcomes`
+6. **Entity Resolution**: Use fuzzy matching for organization names
 
-1. **MeSH Term Integration**: Add drug classification hierarchy
-2. **Outcome Analysis**: Parse primary/secondary outcomes
-3. **Facility Networks**: Model trial site relationships
-4. **NLP Enhancement**: Use ML for better route extraction
-5. **Change Data Capture**: Track schema/data changes
+### Long-term Vision
+7. **External Enrichment**: Link drugs to DrugBank, PubChem
+8. **Change Data Capture**: Track schema/data changes over time
+9. **GraphQL API**: Expose graph via API for downstream applications
 
 ## 📄 License
 

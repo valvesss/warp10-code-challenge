@@ -69,10 +69,21 @@ LIMIT 20;
 
 
 // ----------------------------------------------------------------------------
-// 3. ORGANIZATION-CENTRIC QUERIES
+// 3. ORGANIZATION-CENTRIC QUERIES (REQUIRED BY CHALLENGE)
 // ----------------------------------------------------------------------------
 
-// 3.1 Top sponsoring organizations
+// 3.1 REQUIRED QUERY: For a given company, list of associated clinical trials
+// Example: List all trials for "National Cancer Institute"
+MATCH (t:Trial)-[:SPONSORED_BY|COLLABORATES_WITH]->(o:Organization)
+WHERE o.name CONTAINS 'National Cancer Institute'
+RETURN t.nct_id AS TrialID,
+       t.brief_title AS Title,
+       t.phase AS Phase,
+       t.overall_status AS Status
+ORDER BY t.nct_id
+LIMIT 25;
+
+// 3.2 REQUIRED QUERY: Top companies by number of trials
 MATCH (t:Trial)-[:SPONSORED_BY]->(o:Organization)
 RETURN o.name AS Organization,
        o.agency_class AS Class,
@@ -235,10 +246,22 @@ LIMIT 20;
 
 
 // ----------------------------------------------------------------------------
-// 7. ROUTE/DOSAGE FORM ANALYSIS (from extracted data)
+// 7. ROUTE/DOSAGE FORM ANALYSIS (REQUIRED BY CHALLENGE)
 // ----------------------------------------------------------------------------
 
-// 7.1 Distribution of routes of administration
+// 7.1 REQUIRED QUERY: Route and dosage form coverage
+// Shows how many trials have route/dosage form captured
+MATCH (t:Trial)-[inv:INVESTIGATES]->(d:Drug)
+WITH count(*) AS Total,
+     sum(CASE WHEN inv.route IS NOT NULL THEN 1 ELSE 0 END) AS WithRoute,
+     sum(CASE WHEN inv.dosage_form IS NOT NULL THEN 1 ELSE 0 END) AS WithDosageForm
+RETURN Total AS TotalDrugTrialRelations,
+       WithRoute,
+       round(100.0 * WithRoute / Total, 1) AS RoutePercent,
+       WithDosageForm,
+       round(100.0 * WithDosageForm / Total, 1) AS DosageFormPercent;
+
+// 7.2 Distribution of routes of administration
 MATCH (t:Trial)-[inv:INVESTIGATES]->(d:Drug)
 RETURN inv.route AS Route,
        count(DISTINCT d) AS DrugCount,
