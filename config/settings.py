@@ -143,6 +143,24 @@ class ExtractionSettings:
         return self._settings.extraction_intervention_types
 
 
+class Neo4jSettings:
+    """Neo4j settings wrapper."""
+    def __init__(self, settings: Settings):
+        self._settings = settings
+    
+    @property
+    def uri(self) -> str:
+        return self._settings.neo4j_uri
+    
+    @property
+    def user(self) -> str:
+        return self._settings.neo4j_user
+    
+    @property
+    def password(self) -> str:
+        return self._settings.neo4j_password
+
+
 class SettingsWrapper:
     """Wrapper providing the expected interface for the extractor."""
     def __init__(self):
@@ -150,6 +168,7 @@ class SettingsWrapper:
         self.aact = AACTSettings(self._settings)
         self.data = DataSettings(self._settings)
         self.extraction = ExtractionSettings(self._settings)
+        self.neo4j = Neo4jSettings(self._settings)
         self.log_level = self._settings.log_level
 
 

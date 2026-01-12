@@ -26,3 +26,4 @@ ENV PYTHONPATH=/app
 # Default command
 CMD ["python", "scripts/extract_data.py"]
 
+
