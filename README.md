@@ -72,28 +72,47 @@ From 1,000 clinical trials (Drug/Biological, Phase 1-4):
 ### Prerequisites
 
 - Python 3.9+
-- Docker & Docker Compose (for Neo4j)
-- AACT database credentials ([register here](https://aact.ctti-clinicaltrials.org/users/sign_up))
+- Docker Desktop (for Neo4j)
+- AACT database credentials ([register here](https://aact.ctti-clinicaltrials.org/users/sign_up) - free, takes 2 minutes)
 
-### 1. Setup
+### End-to-End Setup (~5 minutes)
 
 ```bash
-# Clone and setup
+# 1. Clone and enter project
+git clone <repo-url>
 cd warp10-code-challenge
 
-# Create virtual environment
+# 2. Create and activate virtual environment
 python3 -m venv venv
-source venv/bin/activate
+source venv/bin/activate  # On Windows: venv\Scripts\activate
 
-# Install dependencies
+# 3. Install dependencies
 pip install -r requirements.txt
 
-# Configure credentials
+# 4. Configure credentials
 cp .env.example .env
-# Edit .env with your AACT and Neo4j credentials
+# Edit .env with your AACT username/password (get from https://aact.ctti-clinicaltrials.org/users/sign_up)
+
+# 5. Start Neo4j (ensure Docker Desktop is running)
+docker run -d --name neo4j -p 7474:7474 -p 7687:7687 -e NEO4J_AUTH=neo4j/password neo4j:5.15-community
+
+# 6. Wait for Neo4j to start (~15 seconds), then run pipeline
+python scripts/extract_data.py --limit 1000   # ~2 min (fetches from AACT)
+python scripts/transform_data.py              # ~10 sec
+python scripts/load_neo4j.py                  # ~5 sec
+
+# 7. Open Neo4j Browser
+open http://localhost:7474  # Login: neo4j / password
+
+# 8. Run tests
+pytest tests/ -v
 ```
 
-### 2. Configure `.env`
+**Total time:** ~5 minutes (excluding AACT registration)
+
+### Step-by-Step Setup (Detailed)
+
+#### 1. Configure `.env`
 
 ```env
 # AACT Database
@@ -113,13 +132,17 @@ EXTRACTION_LIMIT=1000
 LOG_LEVEL=INFO
 ```
 
-### 3. Start Neo4j
+#### 2. Start Neo4j
 
 ```bash
+# Option A: Simple Docker run
+docker run -d --name neo4j -p 7474:7474 -p 7687:7687 -e NEO4J_AUTH=neo4j/password neo4j:5.15-community
+
+# Option B: Docker Compose (includes Airflow)
 docker-compose up -d neo4j
 ```
 
-### 4. Run Pipeline
+#### 3. Run Pipeline
 
 ```bash
 # Option A: Run each step manually
@@ -351,6 +374,39 @@ All loads use `MERGE` statements:
 7. **External Enrichment**: Link drugs to DrugBank, PubChem
 8. **Change Data Capture**: Track schema/data changes over time
 9. **GraphQL API**: Expose graph via API for downstream applications
+
+## 🔧 Troubleshooting
+
+### Common Issues
+
+**"No module named 'neo4j'"**
+```bash
+pip install neo4j
+```
+
+**"connection to server failed: fe_sendauth: no password supplied"**
+- Ensure `.env` file exists with valid AACT credentials
+- Register at https://aact.ctti-clinicaltrials.org/users/sign_up
+
+**"docker: command not found"**
+- Install Docker Desktop from https://docker.com
+- Ensure Docker Desktop is running (whale icon in menu bar)
+
+**"No studies found matching criteria"**
+- AACT uses uppercase phase values: `PHASE1`, `PHASE2`, `PHASE3`, `PHASE4`
+- Check your `.env` credentials are correct
+
+**Neo4j connection refused**
+```bash
+# Check if container is running
+docker ps | grep neo4j
+
+# If not running, start it
+docker run -d --name neo4j -p 7474:7474 -p 7687:7687 -e NEO4J_AUTH=neo4j/password neo4j:5.15-community
+
+# Wait 15 seconds for startup
+sleep 15
+```
 
 ## 📄 License
 
