@@ -2,12 +2,40 @@
 
 A data engineering pipeline that extracts clinical trial data from AACT (Aggregate Analysis of ClinicalTrials.gov), transforms it, and loads it into a Neo4j knowledge graph database.
 
+## 💡 Key Design Decisions (TL;DR)
+
+| Decision | Choice | Why |
+|----------|--------|-----|
+| **Data Source** | AACT PostgreSQL | Real production database, not CSV dumps—enables SQL filtering and handles 500K+ trials |
+| **Route/Dosage** | Edge properties, not nodes | Sparse data (~7% coverage)—dedicated nodes would be mostly disconnected |
+| **Org Deduplication** | Suffix removal + key normalization | Reduces 1,498 → 169 orgs; simple, explainable, no ML dependencies |
+| **Idempotency** | Neo4j MERGE | Safe reruns, incremental updates, failure recovery |
+| **Storage Format** | Parquet | Columnar, compressed, schema-preserving—better than CSV for data pipelines |
+
 ## 🎯 Overview
 
 This pipeline implements a complete ETL workflow:
 
-```
-AACT (PostgreSQL) → Extract → Transform → Neo4j (Graph DB)
+```mermaid
+flowchart LR
+    subgraph Extract
+        A[(AACT\nPostgreSQL)] -->|psycopg2| B[Raw Layer\n.parquet]
+    end
+    
+    subgraph Transform
+        B -->|pandas| C[Staged Layer\n.parquet]
+        C -->|normalize| D[Deduplicate\nOrgs & Drugs]
+    end
+    
+    subgraph Load
+        D -->|neo4j driver| E[(Neo4j\nGraph DB)]
+    end
+    
+    subgraph Orchestrate
+        F[Airflow DAG] -.->|schedule| Extract
+        F -.->|schedule| Transform
+        F -.->|schedule| Load
+    end
 ```
 
 ### Graph Model
