@@ -66,3 +66,6 @@ airflow.db
 airflow-webserver.pid
 
 
+.coverage
+# Pytest
+.pytest_cache/
