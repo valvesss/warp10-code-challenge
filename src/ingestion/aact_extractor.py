@@ -132,6 +132,16 @@ class AACTExtractor:
                 "mesh_type",
             ],
         },
+        "design_groups": {
+            "description": "Treatment arm/group descriptions",
+            "columns": [
+                "id",
+                "nct_id",
+                "group_type",
+                "title",
+                "description",
+            ],
+        },
         "facilities": {
             "description": "Study locations/sites",
             "columns": [

@@ -84,6 +84,16 @@ def main(
         table_list = [t.strip() for t in tables.split(",")]
         logger.info("Extracting specific tables", tables=table_list)
 
+    # Validate AACT credentials are configured
+    if not settings.aact.user or not settings.aact.password:
+        logger.error(
+            "AACT credentials not configured. Please set up your credentials:\n"
+            "  1. Copy .env.example to .env: cp .env.example .env\n"
+            "  2. Edit .env with your AACT credentials\n"
+            "  3. Get free credentials at: https://aact.ctti-clinicaltrials.org/users/sign_up"
+        )
+        sys.exit(1)
+
     try:
         # Initialize extractor
         extractor = AACTExtractor(settings)

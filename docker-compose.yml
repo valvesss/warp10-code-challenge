@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   neo4j:
     image: neo4j:5.15-community
@@ -26,19 +24,27 @@ services:
   airflow-init:
     image: apache/airflow:2.8.0-python3.11
     container_name: clinical-trials-airflow-init
+    user: "0:0"
     entrypoint: /bin/bash
     command:
       - -c
       - |
-        airflow db init
-        airflow users create \
-          --username admin \
-          --firstname Admin \
-          --lastname User \
-          --role Admin \
-          --email admin@example.com \
-          --password admin
+        # Ensure airflow home directory exists with proper permissions
+        mkdir -p /opt/airflow
+        chown -R airflow:root /opt/airflow
+        # Switch to airflow user and initialize
+        exec gosu airflow bash -c '
+          airflow db migrate
+          airflow users create \
+            --username admin \
+            --firstname Admin \
+            --lastname User \
+            --role Admin \
+            --email admin@example.com \
+            --password admin || true
+        '
     environment:
+      - AIRFLOW_HOME=/opt/airflow
       - AIRFLOW__CORE__EXECUTOR=LocalExecutor
       - AIRFLOW__DATABASE__SQL_ALCHEMY_CONN=sqlite:////opt/airflow/airflow.db
       - AIRFLOW__CORE__FERNET_KEY=
@@ -59,6 +65,7 @@ services:
     ports:
       - "8080:8080"
     environment:
+      - AIRFLOW_HOME=/opt/airflow
       - AIRFLOW__CORE__EXECUTOR=LocalExecutor
       - AIRFLOW__DATABASE__SQL_ALCHEMY_CONN=sqlite:////opt/airflow/airflow.db
       - AIRFLOW__CORE__FERNET_KEY=
@@ -84,6 +91,7 @@ services:
     container_name: clinical-trials-airflow-scheduler
     command: scheduler
     environment:
+      - AIRFLOW_HOME=/opt/airflow
       - AIRFLOW__CORE__EXECUTOR=LocalExecutor
       - AIRFLOW__DATABASE__SQL_ALCHEMY_CONN=sqlite:////opt/airflow/airflow.db
       - AIRFLOW__CORE__FERNET_KEY=

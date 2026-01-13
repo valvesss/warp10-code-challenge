@@ -48,18 +48,11 @@ def _extract_data(**context):
     # Ensure output directory exists
     settings.data.ensure_paths_exist()
     
-    extractor = AACTExtractor(
-        host=settings.aact.host,
-        port=settings.aact.port,
-        database=settings.aact.database,
-        user=settings.aact.user,
-        password=settings.aact.password,
-        intervention_types=settings.extraction.intervention_types,
-        phases=settings.extraction.phases,
-        output_dir=settings.data.raw_path,
-    )
+    # Initialize extractor with settings object
+    extractor = AACTExtractor(settings)
     
-    stats = extractor.extract_all(limit=settings.extraction.limit)
+    # Run extraction (limit is read from settings internally)
+    stats = extractor.extract_all()
     
     logger.info("Extraction completed", **stats)
     

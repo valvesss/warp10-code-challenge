@@ -117,9 +117,10 @@ source venv/bin/activate  # On Windows: venv\Scripts\activate
 # 3. Install dependencies
 pip install -r requirements.txt
 
-# 4. Configure credentials
+# 4. Configure credentials (REQUIRED - see .env.example)
 cp .env.example .env
-# Edit .env with your AACT username/password (get from https://aact.ctti-clinicaltrials.org/users/sign_up)
+# Edit .env with your AACT username/password
+# Get free credentials from: https://aact.ctti-clinicaltrials.org/users/sign_up
 
 # 5. Start Neo4j (ensure Docker Desktop is running)
 docker run -d --name neo4j -p 7474:7474 -p 7687:7687 -e NEO4J_AUTH=neo4j/password neo4j:5.15-community
